@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require_relative "ruby/version"
-require_relative "client"
+require_relative 'ruby/version'
+require_relative 'client'
 
 module Chatgpt
   module Ruby
