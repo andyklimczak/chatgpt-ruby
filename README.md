@@ -10,7 +10,7 @@
 
 ## Features
 
-- API integration for chat completions and text completions
+- API integration for Responses (chat)
 - Streaming capability for handling real-time response chunks
 - Custom exception classes for different API error types
 - Configurable timeout, retries and default parameters
@@ -21,12 +21,12 @@
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
+- [Supported Models](#supported-models)
 - [Configuration](#configuration)
 - [Rails Integration](#rails-integration)
 - [Error Handling](#error-handling)
 - [Current Capabilities](#current-capabilities)
-  - [Chat Completions](#chat-completions)
-  - [Text Completions](#text-completions)
+  - [Chat (Responses API)](#chat-responses-api)
 - [Roadmap](#roadmap)
 - [Development](#development)
 - [Contributing](#contributing)
@@ -54,18 +54,36 @@ require 'chatgpt'
 # Initialize with API key
 client = ChatGPT::Client.new(ENV['OPENAI_API_KEY'])
 
-# Chat API (Recommended for GPT-3.5-turbo, GPT-4)
+# Chat API (Responses API)
 response = client.chat([
   { role: "user", content: "What is Ruby?" }
 ])
 
-puts response.dig("choices", 0, "message", "content")
+message = response["output"]&.find { |item| item["type"] == "message" }
+puts message&.dig("content", 0, "text")
 
-# Completions API (For GPT-3.5-turbo-instruct)
-response = client.completions("What is Ruby?")
-puts response.dig("choices", 0, "text")
+# GPT-5
+client5 = ChatGPT::Client.new(ENV['OPENAI_API_KEY'], 'gpt-5-mini')
+response5 = client5.chat([
+  { role: "user", content: "What is Ruby?" }
+])
+message = response5["output"]&.find { |item| item["type"] == "message" }
+puts message&.dig("content", 0, "text")
 
 ```
+
+## Supported Models
+
+Chat uses the Responses API for all models; the legacy Chat Completions endpoint is not supported.
+
+Common models:
+- gpt-4.1
+- gpt-4o-mini (default)
+- gpt-4o
+- gpt-5-mini
+- gpt-5
+
+Availability depends on your OpenAI account and endpoint support.
 
 ## Rails Integration
 
@@ -77,7 +95,7 @@ require 'chatgpt'
 
 ChatGPT.configure do |config|
   config.api_key = Rails.application.credentials.openai[:api_key]
-  config.default_engine = 'gpt-3.5-turbo'
+  config.default_engine = 'gpt-5-mini'
   config.request_timeout = 30
 end
 ```
@@ -94,8 +112,9 @@ class ChatGPTService
     response = @client.chat([
       { role: "user", content: question }
     ])
-    
-    response.dig("choices", 0, "message", "content")
+
+    message = response["output"]&.find { |item| item["type"] == "message" }
+    message&.dig("content", 0, "text")
   end
 end
 
@@ -112,7 +131,7 @@ end
 ChatGPT.configure do |config|
   config.api_key = ENV['OPENAI_API_KEY']
   config.api_version = 'v1'
-  config.default_engine = 'gpt-3.5-turbo'
+  config.default_engine = 'gpt-5-mini'
   config.request_timeout = 30
   config.max_retries = 3
   config.default_parameters = {
@@ -144,24 +163,21 @@ end
 
 ## Current Capabilities
 
-### Chat Completions
+### Chat (Responses API)
 ```ruby
 # Basic chat
 response = client.chat([
   { role: "user", content: "What is Ruby?" }
 ])
+message = response["output"]&.find { |item| item["type"] == "message" }
+puts message&.dig("content", 0, "text")
 
 # With streaming
 client.chat_stream([{ role: "user", content: "Tell me a story" }]) do |chunk|
-  print chunk.dig("choices", 0, "delta", "content")
-end
-```
+  next unless chunk["type"] == "response.output_text.delta"
 
-### Text Completions
-```ruby
-# Basic completion with GPT-3.5-turbo-instruct
-response = client.completions("What is Ruby?")
-puts response.dig("choices", 0, "text")
+  print chunk["delta"]
+end
 ```
 
 ## Roadmap

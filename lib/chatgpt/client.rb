@@ -6,14 +6,15 @@ require 'json'
 
 module ChatGPT
   class Client
-    def initialize(api_key = nil)
+    def initialize(api_key = nil, model = nil)
       @api_key = api_key || ChatGPT.configuration.api_key
       @endpoint = 'https://api.openai.com/v1'
       @config = ChatGPT.configuration
+      @default_model = model || @config.default_engine
     end
 
     def completions(prompt, params = {})
-      engine = params[:engine] || @config.default_engine
+      engine = params[:engine] || @default_model
       url = "#{@endpoint}/engines/#{engine}/completions"
 
       data = @config.default_parameters.merge(
@@ -28,16 +29,9 @@ module ChatGPT
     end
 
     def chat(messages, params = {})
-      url = "#{@endpoint}/chat/completions"
-
-      data = @config.default_parameters.merge(
-        model: params[:model] || @config.default_engine, # Use configured default_engine
-        messages: messages,
-        temperature: params[:temperature],
-        top_p: params[:top_p],
-        n: params[:n],
-        stream: params[:stream] || false
-      ).compact
+      model = resolve_model(params)
+      url = "#{@endpoint}/responses"
+      data = responses_payload(messages, params, model)
 
       request_api(url, data)
     end
@@ -45,17 +39,38 @@ module ChatGPT
     def chat_stream(messages, params = {}, &block)
       raise ArgumentError, 'Block is required for streaming' unless block_given?
 
-      url = "#{@endpoint}/chat/completions"
-      data = @config.default_parameters.merge(
-        model: params[:model] || @config.default_engine, # Use configured default_engine
-        messages: messages,
-        stream: true
-      ).compact
+      model = resolve_model(params)
+      url = "#{@endpoint}/responses"
+      data = responses_payload(messages, params.merge(stream: true), model)
 
       request_streaming(url, data, &block)
     end
 
     private
+
+    def resolve_model(params)
+      params[:model] || @default_model
+    end
+
+    def responses_payload(messages, params, model)
+      defaults = @config.default_parameters
+      default_max_output_tokens = [defaults[:max_tokens], 128].max
+      payload = {
+        model: model,
+        input: messages,
+        max_output_tokens: params[:max_output_tokens] || params[:max_tokens] || default_max_output_tokens,
+        stream: params[:stream] || false
+      }
+      if params.key?(:reasoning)
+        payload[:reasoning] = params[:reasoning]
+      elsif reasoning_supported?(model)
+        payload[:reasoning] = { effort: 'low' }
+      end
+      payload[:text] = params[:text] if params.key?(:text)
+      payload[:temperature] = params[:temperature] if params.key?(:temperature)
+      payload[:top_p] = params[:top_p] if params.key?(:top_p)
+      payload.compact
+    end
 
     def request_api(url, data)
       response = RestClient::Request.execute(
@@ -71,6 +86,10 @@ module ChatGPT
       JSON.parse(response.body)
     rescue RestClient::ExceptionWithResponse => e
       handle_error(e)
+    end
+
+    def reasoning_supported?(model)
+      model.to_s.start_with?('gpt-5')
     end
 
     def handle_error(error)

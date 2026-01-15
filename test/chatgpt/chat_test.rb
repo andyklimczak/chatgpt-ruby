@@ -12,36 +12,63 @@ class TestChatGPTChatIntegration < Minitest::Test
   end
 
   def test_basic_chat
-    stub_chat_request
+    stub_responses_request
     messages = [{ role: 'user', content: 'Hello!' }]
     response = @client.chat(messages)
+    message = response['output'].find { |item| item['type'] == 'message' }
 
-    assert_equal 1, response['choices'].length
-    assert response['choices'][0]['message']['content']
-    assert_equal 'assistant', response['choices'][0]['message']['role']
+    assert message
+    assert message.dig('content', 0, 'text')
+    assert_equal 'assistant', message['role']
+  end
+
+  def test_chat_with_default_model_override
+    client = ChatGPT::Client.new(@api_key, 'gpt-4o-mini')
+    stub_responses_request(model: 'gpt-4o-mini')
+    messages = [{ role: 'user', content: 'Hello!' }]
+    response = client.chat(messages)
+    message = response['output'].find { |item| item['type'] == 'message' }
+
+    assert message&.dig('content', 0, 'text')
+  end
+
+  def test_chat_uses_responses_api
+    client = ChatGPT::Client.new(@api_key, 'gpt-4o-mini')
+    stub_responses_request(model: 'gpt-4o-mini')
+    messages = [{ role: 'user', content: 'Hello!' }]
+    response = client.chat(messages)
+
+    message = response['output'].find { |item| item['type'] == 'message' }
+
+    assert message
+    assert_equal 'assistant', message['role']
+    assert message.dig('content', 0, 'text')
+    assert_requested(:post, 'https://api.openai.com/v1/responses')
   end
 
   def test_chat_with_system_message
-    stub_chat_request
+    stub_responses_request
     messages = [
       { role: 'system', content: 'You are a helpful assistant.' },
       { role: 'user', content: 'Hello!' }
     ]
 
     response = @client.chat(messages)
-    assert response['choices'][0]['message']['content']
+    message = response['output'].find { |item| item['type'] == 'message' }
+    assert message&.dig('content', 0, 'text')
   end
 
   def test_chat_with_custom_parameters
-    stub_chat_request(temperature: 0.7)
+    stub_responses_request(temperature: 0.7)
     messages = [{ role: 'user', content: 'Hello!' }]
     response = @client.chat(messages, temperature: 0.7)
+    message = response['output'].find { |item| item['type'] == 'message' }
 
-    assert response['choices'][0]['message']['content']
+    assert message&.dig('content', 0, 'text')
   end
 
   def test_chat_streaming
-    stub_chat_stream_request
+    stub_responses_stream_request
     messages = [{ role: 'user', content: 'Hello!' }]
     chunks = []
 
@@ -50,11 +77,11 @@ class TestChatGPTChatIntegration < Minitest::Test
     end
 
     assert chunks.length.positive?
-    assert(chunks.all? { |c| c.dig('choices', 0, 'delta') })
+    assert(chunks.all? { |c| c['type'] })
   end
 
   def test_chat_with_invalid_messages
-    stub_chat_error_request(400, 'Invalid messages format')
+    stub_responses_error_request(400, 'Invalid messages format')
     error = assert_raises(ChatGPT::InvalidRequestError) do
       @client.chat([])
     end
@@ -63,7 +90,7 @@ class TestChatGPTChatIntegration < Minitest::Test
   end
 
   def test_chat_with_rate_limit
-    stub_chat_error_request(429, 'Rate limit exceeded')
+    stub_responses_error_request(429, 'Rate limit exceeded')
     error = assert_raises(ChatGPT::RateLimitError) do
       @client.chat([{ role: 'user', content: 'Hello!' }])
     end
