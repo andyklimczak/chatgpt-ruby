@@ -102,7 +102,7 @@ module TestHelpers
       .to_return(
         status: 200,
         body: response_body.to_json,
-        headers: { 'Content-Type' => 'application/json' }
+        headers: { 'Content-Type' => 'application/json', 'X-Request-Id' => params[:request_id] || 'req-123' }
       )
   end
 

@@ -96,4 +96,56 @@ class TestChatGPTChatIntegration < Minitest::Test
     end
     assert_equal 429, error.status_code
   end
+
+  def test_responses_preserve_safety_identifier_storage_schema_and_request_id
+    schema = {
+      type: 'object',
+      properties: { value: { type: 'string' } },
+      required: ['value'],
+      additionalProperties: false
+    }
+    identifier = "v12.#{'a' * 43}"
+    stub_responses_request(request_id: 'req_123')
+
+    response = @client.responses(
+      [{ role: 'user', content: 'Hello!' }],
+      store: false,
+      safety_identifier: identifier,
+      reasoning: { effort: 'low', context: 'current_turn' },
+      text: { format: { type: 'json_schema', name: 'result', strict: true, schema: schema } }
+    )
+
+    assert_equal 'req_123', response.request_id
+    assert_equal 'response', response.body['object']
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      body = JSON.parse(request.body)
+      body['store'] == false &&
+        body['safety_identifier'] == identifier &&
+        body.dig('reasoning', 'context') == 'current_turn' &&
+        body.dig('text', 'format', 'schema') == JSON.parse(schema.to_json)
+    end
+  end
+
+  def test_responses_reject_invalid_safety_identifier
+    error = assert_raises(ArgumentError) do
+      @client.responses([{ role: 'user', content: 'Hello!' }], safety_identifier: 'athlete-123')
+    end
+
+    assert_match 'safety_identifier', error.message
+  end
+
+  def test_retries_retryable_responses_with_retry_after
+    delays = []
+    client = ChatGPT::Client.new(@api_key, nil, sleeper: ->(delay) { delays << delay }, jitter: -> { 0 })
+    stub_request(:post, 'https://api.openai.com/v1/responses')
+      .to_return(status: 429, body: { error: { message: 'Rate limit exceeded' } }.to_json, headers: { 'Retry-After' => '1' })
+      .then
+      .to_return(status: 200, body: { id: 'resp-123', object: 'response', output: [] }.to_json, headers: { 'X-Request-Id' => 'req_123' })
+
+    response = client.responses([{ role: 'user', content: 'Hello!' }])
+
+    assert_equal 'req_123', response.request_id
+    assert_equal [1.0], delays
+    assert_requested :post, 'https://api.openai.com/v1/responses', times: 2
+  end
 end

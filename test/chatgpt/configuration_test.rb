@@ -17,11 +17,13 @@ class TestChatGPTConfiguration < Minitest::Test
       config.api_key = 'test-key'
       config.default_engine = 'custom-engine'
       config.request_timeout = 60
+      config.open_timeout = 10
     end
 
     assert_equal 'test-key', ChatGPT.configuration.api_key
     assert_equal 'custom-engine', ChatGPT.configuration.default_engine
     assert_equal 60, ChatGPT.configuration.request_timeout
+    assert_equal 10, ChatGPT.configuration.open_timeout
   end
 
   def test_default_configuration_values
@@ -30,7 +32,8 @@ class TestChatGPTConfiguration < Minitest::Test
     assert_equal 'v1', config.api_version
     assert_equal 'gpt-4o-mini', config.default_engine
     assert_equal 30, config.request_timeout
-    assert_equal 3, config.max_retries
+    assert_equal 5, config.open_timeout
+    assert_equal 2, config.max_retries
     assert_kind_of Hash, config.default_parameters
   end
 

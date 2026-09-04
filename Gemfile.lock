@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     chatgpt-ruby (2.1.2)
+      ostruct
       rest-client (~> 2.1)
 
 GEM
@@ -30,8 +31,9 @@ GEM
       logger
       mime-types-data (~> 3.2025, >= 3.2025.0507)
     mime-types-data (3.2025.0514)
-    minitest (5.18.0)
+    minitest (5.27.0)
     netrc (0.11.0)
+    ostruct (0.6.3)
     parallel (1.22.1)
     parser (3.2.1.1)
       ast (~> 2.4.1)
