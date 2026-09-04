@@ -106,17 +106,20 @@ class TestChatGPTChatIntegration < Minitest::Test
     }
     identifier = "v12.#{'a' * 43}"
     stub_responses_request(request_id: 'req_123')
+    serialized_request = nil
 
     response = @client.responses(
       [{ role: 'user', content: 'Hello!' }],
       store: false,
       safety_identifier: identifier,
       reasoning: { effort: 'low', context: 'current_turn' },
-      text: { format: { type: 'json_schema', name: 'result', strict: true, schema: schema } }
+      text: { format: { type: 'json_schema', name: 'result', strict: true, schema: schema } },
+      before_request: ->(body) { serialized_request = body }
     )
 
     assert_equal 'req_123', response.request_id
     assert_equal 'response', response.body['object']
+    assert_equal identifier, JSON.parse(serialized_request)['safety_identifier']
     assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
       body = JSON.parse(request.body)
       body['store'] == false &&

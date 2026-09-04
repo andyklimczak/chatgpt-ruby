@@ -41,12 +41,13 @@ module ChatGPT
       responses(messages, params).body
     end
 
-    def responses(messages, params = {})
+    def responses(messages, params = nil, before_request: nil, **keyword_params)
+      params = (params || {}).merge(keyword_params)
       model = resolve_model(params)
       url = "#{@endpoint}/responses"
       data = responses_payload(messages, params, model)
 
-      request_response(url, data)
+      request_response(url, data, before_request: before_request)
     end
 
     def chat_stream(messages, params = {}, &block)
@@ -92,12 +93,14 @@ module ChatGPT
       request_response(url, data).body
     end
 
-    def request_response(url, data)
+    def request_response(url, data, before_request: nil)
       attempts = 0
 
       begin
         attempts += 1
-        response = @transport.execute(request_options(url, data))
+        options = request_options(url, data)
+        before_request&.call(options[:payload])
+        response = @transport.execute(options)
         headers = normalized_headers(response.headers)
 
         Response.new(
