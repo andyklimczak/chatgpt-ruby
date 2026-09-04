@@ -151,4 +151,53 @@ class TestChatGPTChatIntegration < Minitest::Test
     assert_equal [1.0], delays
     assert_requested :post, 'https://api.openai.com/v1/responses', times: 2
   end
+
+  def test_retries_retryable_statuses
+    [408, 409, 500].each do |status|
+      WebMock.reset!
+      delays = []
+      client = ChatGPT::Client.new(@api_key, nil, sleeper: ->(delay) { delays << delay }, jitter: -> { 0 })
+      stub_request(:post, 'https://api.openai.com/v1/responses')
+        .to_return(status: status, body: { error: { message: 'Retry me' } }.to_json)
+        .then
+        .to_return(status: 200, body: { id: 'resp-123', object: 'response', output: [] }.to_json)
+
+      client.responses([{ role: 'user', content: 'Hello!' }])
+
+      assert_equal [0.5], delays
+      assert_requested :post, 'https://api.openai.com/v1/responses', times: 2
+    end
+  end
+
+  def test_stops_after_the_configured_retry_budget
+    original_retries = ChatGPT.configuration.max_retries
+    ChatGPT.configuration.max_retries = 1
+    stub_responses_error_request(500, 'Temporary error')
+
+    error = assert_raises(ChatGPT::APIError) do
+      @client.responses([{ role: 'user', content: 'Hello!' }])
+    end
+
+    assert_equal 500, error.status_code
+    assert_requested :post, 'https://api.openai.com/v1/responses', times: 2
+  ensure
+    ChatGPT.configuration.max_retries = original_retries
+  end
+
+  def test_retries_timeouts_and_returns_a_typed_timeout_error
+    original_retries = ChatGPT.configuration.max_retries
+    ChatGPT.configuration.max_retries = 1
+    delays = []
+    client = ChatGPT::Client.new(@api_key, nil, sleeper: ->(delay) { delays << delay }, jitter: -> { 0 })
+    stub_request(:post, 'https://api.openai.com/v1/responses').to_timeout
+
+    assert_raises(ChatGPT::TimeoutError) do
+      client.responses([{ role: 'user', content: 'Hello!' }])
+    end
+
+    assert_equal [0.5], delays
+    assert_requested :post, 'https://api.openai.com/v1/responses', times: 2
+  ensure
+    ChatGPT.configuration.max_retries = original_retries
+  end
 end

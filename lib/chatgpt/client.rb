@@ -109,6 +109,13 @@ module ChatGPT
           headers: headers,
           request_id: headers['x-request-id']
         )
+      rescue RestClient::Exceptions::Timeout, Errno::ETIMEDOUT
+        if retry_request?(attempts)
+          sleep_for_retry(attempts)
+          retry
+        end
+
+        raise ChatGPT::TimeoutError, 'The OpenAI request timed out.'
       rescue RestClient::ExceptionWithResponse => e
         if retry_request?(attempts, e)
           sleep_for_retry(attempts, e)
@@ -116,7 +123,7 @@ module ChatGPT
         end
 
         handle_error(e)
-      rescue RestClient::Exception, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::ETIMEDOUT
+      rescue RestClient::Exception, SocketError, Errno::ECONNREFUSED, Errno::ECONNRESET
         if retry_request?(attempts)
           sleep_for_retry(attempts)
           retry
