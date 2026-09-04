@@ -200,4 +200,26 @@ class TestChatGPTChatIntegration < Minitest::Test
   ensure
     ChatGPT.configuration.max_retries = original_retries
   end
+
+  def test_uses_separate_connect_and_read_timeouts
+    original_open_timeout = ChatGPT.configuration.open_timeout
+    original_request_timeout = ChatGPT.configuration.request_timeout
+    ChatGPT.configuration.open_timeout = 3
+    ChatGPT.configuration.request_timeout = 7
+    captured_options = nil
+    response = Struct.new(:body, :code, :headers).new({ id: 'resp-123', object: 'response', output: [] }.to_json, 200, {})
+    transport = Object.new
+    transport.define_singleton_method(:execute) do |options|
+      captured_options = options
+      response
+    end
+
+    ChatGPT::Client.new(@api_key, nil, transport: transport).responses([{ role: 'user', content: 'Hello!' }])
+
+    assert_equal 3, captured_options[:open_timeout]
+    assert_equal 7, captured_options[:timeout]
+  ensure
+    ChatGPT.configuration.open_timeout = original_open_timeout
+    ChatGPT.configuration.request_timeout = original_request_timeout
+  end
 end
