@@ -4,11 +4,12 @@
 module ChatGPT
   class Configuration
     attr_accessor :api_key, :api_version, :default_engine,
-                  :request_timeout, :open_timeout, :max_retries, :default_parameters
+                  :request_timeout, :open_timeout, :max_retries, :default_parameters, :reasoning_effort
 
     def initialize
       @api_version = 'v1'
       @default_engine = 'gpt-4o-mini'
+      @reasoning_effort = 'low'
       @request_timeout = 30
       @open_timeout = 5
       @max_retries = 2

@@ -68,7 +68,7 @@ module ChatGPT
 
     def responses_payload(messages, params, model)
       defaults = @config.default_parameters
-      default_max_output_tokens = [defaults[:max_tokens], 128].max
+      default_max_output_tokens = [defaults[:max_output_tokens] || defaults[:max_tokens] || 128, 128].max
       payload = {
         model: model,
         input: messages,
@@ -77,8 +77,12 @@ module ChatGPT
       }
       if params.key?(:reasoning)
         payload[:reasoning] = params[:reasoning]
-      elsif reasoning_supported?(model)
-        payload[:reasoning] = { effort: 'low' }
+      elsif params.key?(:reasoning_effort)
+        payload[:reasoning] = { effort: params[:reasoning_effort] } unless params[:reasoning_effort].nil?
+      elsif defaults.key?(:reasoning)
+        payload[:reasoning] = defaults[:reasoning]
+      elsif reasoning_supported?(model) && @config.reasoning_effort
+        payload[:reasoning] = { effort: @config.reasoning_effort }
       end
       payload[:text] = params[:text] if params.key?(:text)
       payload[:temperature] = params[:temperature] if params.key?(:temperature)
@@ -134,7 +138,7 @@ module ChatGPT
     end
 
     def reasoning_supported?(model)
-      model.to_s.start_with?('gpt-5')
+      model.to_s.match?(/\Agpt-(?:5|6)(?:[.-]|\z)/)
     end
 
     def handle_error(error)

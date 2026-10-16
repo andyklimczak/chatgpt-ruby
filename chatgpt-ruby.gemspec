@@ -11,15 +11,15 @@ Gem::Specification.new do |spec|
 
   spec.summary = "Ruby client for OpenAI's ChatGPT API"
   spec.description = "A Ruby SDK for OpenAI's ChatGPT API"
-  spec.homepage = 'https://github.com/nagstler/chatgpt-ruby'
+  spec.homepage = 'https://github.com/andyklimczak/chatgpt-ruby'
   spec.license = 'MIT'
 
   spec.platform = Gem::Platform::RUBY
   spec.required_ruby_version = '>= 3.0.0'
 
   spec.metadata['homepage_uri'] = spec.homepage
-  spec.metadata['source_code_uri'] = 'https://github.com/nagstler/chatgpt-ruby'
-  spec.metadata['changelog_uri'] = 'https://github.com/nagstler/chatgpt-ruby/blob/main/CHANGELOG.md'
+  spec.metadata['source_code_uri'] = spec.homepage
+  spec.metadata['changelog_uri'] = 'https://github.com/andyklimczak/chatgpt-ruby/blob/master/CHANGELOG.md'
 
   spec.files = Dir.glob('{lib,exe}/**/*') + %w[README.md LICENSE.txt]
   spec.bindir = 'exe'

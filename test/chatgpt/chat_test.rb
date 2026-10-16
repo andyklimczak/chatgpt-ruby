@@ -7,8 +7,202 @@ class TestChatGPTChatIntegration < Minitest::Test
   include TestHelpers
 
   def setup
+    super
+    ChatGPT.reset_configuration!
     @api_key = 'test-key'
     @client = ChatGPT::Client.new(@api_key)
+  end
+
+  def teardown
+    ChatGPT.reset_configuration!
+    super
+  end
+
+  def test_default_reasoning_for_gpt_5_and_forward_compatible_gpt_6_model_ids
+    %w[gpt-5 gpt-5-mini gpt-5.4-mini gpt-5.5 gpt-6 gpt-6.1 gpt-6-mini gpt-6.1-2099-01-01].each do |model|
+      WebMock.reset!
+      stub_responses_request(model: model)
+
+      ChatGPT::Client.new(@api_key, model).chat([{ role: 'user', content: 'Hello!' }])
+
+      assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+        body = JSON.parse(request.body)
+        body['model'] == model && body['reasoning'] == { 'effort' => 'low' }
+      end
+    end
+  end
+
+  def test_other_models_do_not_receive_automatic_reasoning
+    %w[gpt-4o-mini gpt-4.1 gpt-50 custom-model].each do |model|
+      WebMock.reset!
+      stub_responses_request(model: model)
+
+      @client.chat([{ role: 'user', content: 'Hello!' }], model: model)
+
+      assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+        body = JSON.parse(request.body)
+        body['model'] == model && !body.key?('reasoning')
+      end
+    end
+  end
+
+  def test_configured_reasoning_effort
+    ChatGPT.configuration.reasoning_effort = 'medium'
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], model: 'gpt-5.5')
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      JSON.parse(request.body)['reasoning'] == { 'effort' => 'medium' }
+    end
+  end
+
+  def test_request_reasoning_effort_overrides_configuration
+    ChatGPT.configuration.reasoning_effort = 'medium'
+    ChatGPT.configuration.default_parameters[:reasoning] = { effort: 'low' }
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], model: 'gpt-6.1', reasoning_effort: 'high')
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      body = JSON.parse(request.body)
+      body['reasoning'] == { 'effort' => 'high' } && !body.key?('reasoning_effort')
+    end
+  end
+
+  def test_raw_reasoning_overrides_effort_shorthand
+    stub_responses_request
+
+    @client.chat(
+      [{ role: 'user', content: 'Hello!' }],
+      model: 'gpt-5.5',
+      reasoning_effort: 'high',
+      reasoning: { effort: 'medium', summary: 'auto' }
+    )
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      JSON.parse(request.body)['reasoning'] == { 'effort' => 'medium', 'summary' => 'auto' }
+    end
+  end
+
+  def test_raw_reasoning_defaults_override_configured_effort
+    ChatGPT.configuration.reasoning_effort = 'low'
+    ChatGPT.configuration.default_parameters[:reasoning] = { effort: 'medium', summary: 'auto' }
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], model: 'gpt-5.5')
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      JSON.parse(request.body)['reasoning'] == { 'effort' => 'medium', 'summary' => 'auto' }
+    end
+    assert_equal({ effort: 'medium', summary: 'auto' }, ChatGPT.configuration.default_parameters[:reasoning])
+  end
+
+  def test_explicit_reasoning_is_forwarded_for_other_models
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], model: 'o3', reasoning_effort: 'high')
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      body = JSON.parse(request.body)
+      body['model'] == 'o3' && body['reasoning'] == { 'effort' => 'high' }
+    end
+  end
+
+  def test_nil_request_reasoning_omits_reasoning
+    [{ reasoning: nil }, { reasoning_effort: nil }].each do |params|
+      WebMock.reset!
+      ChatGPT.configuration.default_parameters[:reasoning] = { effort: 'medium' }
+      stub_responses_request
+
+      @client.chat([{ role: 'user', content: 'Hello!' }], params.merge(model: 'gpt-5.5'))
+
+      assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+        !JSON.parse(request.body).key?('reasoning')
+      end
+    end
+  end
+
+  def test_nil_configured_effort_uses_api_default
+    ChatGPT.configuration.reasoning_effort = nil
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], model: 'gpt-5.5')
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      !JSON.parse(request.body).key?('reasoning')
+    end
+  end
+
+  def test_nil_raw_reasoning_default_uses_api_default
+    ChatGPT.configuration.default_parameters[:reasoning] = nil
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], model: 'gpt-6')
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      !JSON.parse(request.body).key?('reasoning')
+    end
+  end
+
+  def test_effort_values_are_forwarded_without_a_model_specific_allowlist
+    %w[none minimal low medium high xhigh].each do |effort|
+      WebMock.reset!
+      stub_responses_request
+
+      @client.chat([{ role: 'user', content: 'Hello!' }], model: 'gpt-5.5', reasoning_effort: effort)
+
+      assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+        JSON.parse(request.body)['reasoning'] == { 'effort' => effort }
+      end
+    end
+  end
+
+  def test_responses_supports_reasoning_effort_and_configured_output_budget
+    ChatGPT.configuration.default_parameters = { max_output_tokens: 8_000 }
+    stub_responses_request
+    serialized_request = nil
+
+    @client.responses(
+      [{ role: 'user', content: 'Hello!' }],
+      model: 'gpt-6.1',
+      reasoning_effort: 'medium',
+      before_request: ->(body) { serialized_request = body }
+    )
+
+    body = JSON.parse(serialized_request)
+    assert_equal 'gpt-6.1', body['model']
+    assert_equal({ 'effort' => 'medium' }, body['reasoning'])
+    assert_equal 8_000, body['max_output_tokens']
+  end
+
+  def test_request_output_budget_overrides_configured_budget
+    ChatGPT.configuration.default_parameters = { max_output_tokens: 8_000 }
+    stub_responses_request
+
+    @client.chat([{ role: 'user', content: 'Hello!' }], max_output_tokens: 12_000)
+
+    assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+      JSON.parse(request.body)['max_output_tokens'] == 12_000
+    end
+  end
+
+  def test_streaming_supports_reasoning_effort_and_model_overrides
+    %w[gpt-5.5 gpt-6 gpt-6.1].each do |model|
+      WebMock.reset!
+      stub_responses_stream_request
+      chunks = []
+
+      @client.chat_stream([{ role: 'user', content: 'Hello!' }], model: model, reasoning_effort: 'high') do |chunk|
+        chunks << chunk
+      end
+
+      assert chunks.any?
+      assert_requested(:post, 'https://api.openai.com/v1/responses') do |request|
+        body = JSON.parse(request.body)
+        body['model'] == model && body['stream'] && body['reasoning'] == { 'effort' => 'high' }
+      end
+    end
   end
 
   def test_basic_chat

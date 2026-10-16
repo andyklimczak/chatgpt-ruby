@@ -1,3 +1,17 @@
+## [Unreleased]
+
+### Added
+- Global `config.reasoning_effort` and per-request `reasoning_effort` for chat, responses, and streaming.
+- Native reasoning defaults through `config.default_parameters[:reasoning]`, with per-request overrides and explicit omission via `nil`.
+- Forward-compatible GPT-6/GPT-6.1 model-ID handling, covered by mocked tests only; live API support is unverified.
+
+### Fixed
+- Honor `max_output_tokens` in configured default parameters, including configurations without `max_tokens`.
+
+### Changed
+- Rebase the GPT-5 branch onto the original upstream's `main`, preserving the fork's Responses API and transport changes.
+- Document GPT-5 models, thinking controls, and the limits of GPT-6 compatibility; point installation and repository links to this fork.
+
 ## [2.1.1] - 2024-04-19
 
 ### Fixed
