@@ -18,4 +18,5 @@ module ChatGPT
   class RateLimitError < APIError; end
   class InvalidRequestError < APIError; end
   class TokenLimitError < APIError; end
+  class TimeoutError < APIError; end
 end

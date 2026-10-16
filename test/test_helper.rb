@@ -75,38 +75,45 @@ module TestHelpers
       )
   end
 
-  def stub_chat_request(params = {})
-    choices = [{
-      'finish_reason' => 'stop',
-      'index' => 0,
-      'message' => { 'role' => 'assistant', 'content' => 'Hello! How can I help you today?' }
-    }]
+  def stub_responses_request(params = {})
+    response_body = {
+      'id' => 'resp-123',
+      'object' => 'response',
+      'model' => params[:model] || 'gpt-5-mini',
+      'output' => [
+        {
+          'id' => 'rs-123',
+          'type' => 'reasoning',
+          'summary' => []
+        },
+        {
+          'id' => 'msg-123',
+          'type' => 'message',
+          'role' => 'assistant',
+          'content' => [
+            { 'type' => 'output_text', 'text' => 'Hello! How can I help you today?' }
+          ]
+        }
+      ]
+    }
 
-    response_body = mock_response_body(
-      choices: choices,
-      id: 'chatcmpl-123',
-      obj: 'chat.completion',
-      model: params[:model] || 'gpt-3.5-turbo'
-    )
-
-    stub_request(:post, 'https://api.openai.com/v1/chat/completions')
+    stub_request(:post, 'https://api.openai.com/v1/responses')
       .with(headers: { 'Authorization' => "Bearer #{@api_key}" })
       .to_return(
         status: 200,
         body: response_body.to_json,
-        headers: { 'Content-Type' => 'application/json' }
+        headers: { 'Content-Type' => 'application/json', 'X-Request-Id' => params[:request_id] || 'req-123' }
       )
   end
 
-  def stub_chat_stream_request
+  def stub_responses_stream_request
     chunks = [
-      { 'choices' => [{ 'delta' => { 'role' => 'assistant' } }] },
-      { 'choices' => [{ 'delta' => { 'content' => 'Hello' } }] },
-      { 'choices' => [{ 'delta' => { 'content' => '!' } }] },
-      { 'choices' => [{ 'delta' => { 'finish_reason' => 'stop' } }] }
+      { 'type' => 'response.output_text.delta', 'delta' => 'Hello' },
+      { 'type' => 'response.output_text.delta', 'delta' => '!' },
+      { 'type' => 'response.output_text.done', 'text' => 'Hello!' }
     ]
 
-    stub_request(:post, 'https://api.openai.com/v1/chat/completions')
+    stub_request(:post, 'https://api.openai.com/v1/responses')
       .with(headers: { 'Authorization' => "Bearer #{@api_key}" })
       .to_return(
         status: 200,
@@ -115,8 +122,8 @@ module TestHelpers
       )
   end
 
-  def stub_chat_error_request(status_code, error_message)
-    stub_request(:post, 'https://api.openai.com/v1/chat/completions')
+  def stub_responses_error_request(status_code, error_message)
+    stub_request(:post, 'https://api.openai.com/v1/responses')
       .with(headers: { 'Authorization' => "Bearer #{@api_key}" })
       .to_return(
         status: status_code,
